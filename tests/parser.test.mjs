@@ -76,6 +76,124 @@ test('parses transcript turns, thinking blocks, tool calls, and cache ratio accu
   assert.equal(parsed.turns[0].userPrompt, 'Inspect the bug in parser.mjs');
 });
 
+test('detects live /compact activity and resets context meter on CHECKPOINT', () => {
+  const convId = '22222222-3333-4444-5555-666666666666';
+  const logDir = path.join(tmpRoot, 'brain', convId, '.system_generated', 'logs');
+  fs.mkdirSync(logDir, { recursive: true });
+  const file = path.join(logDir, 'transcript_full.jsonl');
+  const nowIso = new Date().toISOString();
+
+  const preCompact = [
+    {
+      step_index: 0,
+      source: 'USER_EXPLICIT',
+      type: 'USER_INPUT',
+      status: 'DONE',
+      created_at: nowIso,
+      content: '<USER_REQUEST>\nStart session\n</USER_REQUEST>',
+    },
+    {
+      step_index: 1,
+      source: 'MODEL',
+      type: 'PLANNER_RESPONSE',
+      status: 'DONE',
+      created_at: nowIso,
+      model: 'gemini-4-neon-high',
+      input_tokens: 16000,
+      cache_read_tokens: 0,
+      output_tokens: 400,
+      thinking: 'Initial planning.',
+    },
+    {
+      step_index: 2,
+      source: 'MODEL',
+      type: 'PLANNER_RESPONSE',
+      status: 'DONE',
+      created_at: nowIso,
+      model: 'gemini-4-neon-high',
+      input_tokens: 4000,
+      cache_read_tokens: 196000,
+      output_tokens: 500,
+      thinking: 'Heavy session context.',
+    },
+    {
+      step_index: 3,
+      source: 'USER_EXPLICIT',
+      type: 'USER_INPUT',
+      status: 'DONE',
+      created_at: nowIso,
+      content: '<USER_REQUEST>\n/compact \n</USER_REQUEST>',
+    },
+  ];
+
+  fs.writeFileSync(file, `${preCompact.map((s) => JSON.stringify(s)).join('\n')}\n`, 'utf8');
+
+  const midCompact = parseConversationTranscript(convId);
+  assert.equal(midCompact.activity.isWorking, true);
+  assert.equal(midCompact.activity.phase, 'compacting');
+  assert.equal(midCompact.turns.at(-1).userPrompt, '/compact');
+
+  const withCheckpoint = [
+    ...preCompact,
+    {
+      step_index: 4,
+      source: 'SYSTEM',
+      type: 'CHECKPOINT',
+      status: 'DONE',
+      created_at: nowIso,
+      input_tokens: 3000,
+      cache_read_tokens: 197000,
+      output_tokens: 5000,
+      content: '# Resuming from a compaction\nSummary contents.',
+    },
+  ];
+  fs.writeFileSync(file, `${withCheckpoint.map((s) => JSON.stringify(s)).join('\n')}\n`, 'utf8');
+
+  const postCompact = parseConversationTranscript(convId);
+  assert.equal(postCompact.activity.isWorking, false);
+  assert.equal(postCompact.stats.contextEstimated, true);
+  assert.equal(postCompact.stats.cacheHitRatio, 0);
+  assert.ok(postCompact.stats.contextUsedTokens < 30000, 'context meter should immediately drop after CHECKPOINT');
+  const cpStep = postCompact.turns.at(-1).steps[0];
+  assert.equal(cpStep.kind, 'checkpoint');
+  assert.equal(cpStep.beforeTokens, 200000);
+  assert.equal(cpStep.isEstimatedAfter, true);
+  assert.ok(cpStep.savedTokens > 170000);
+
+  const afterNextPlanner = [
+    ...withCheckpoint,
+    {
+      step_index: 5,
+      source: 'USER_EXPLICIT',
+      type: 'USER_INPUT',
+      status: 'DONE',
+      created_at: nowIso,
+      content: '<USER_REQUEST>\nContinue\n</USER_REQUEST>',
+    },
+    {
+      step_index: 6,
+      source: 'MODEL',
+      type: 'PLANNER_RESPONSE',
+      status: 'DONE',
+      created_at: nowIso,
+      model: 'gemini-4-neon-high',
+      input_tokens: 23500,
+      cache_read_tokens: 0,
+      output_tokens: 300,
+      thinking: 'Resumed after compaction.',
+    },
+  ];
+  fs.writeFileSync(file, `${afterNextPlanner.map((s) => JSON.stringify(s)).join('\n')}\n`, 'utf8');
+
+  const confirmed = parseConversationTranscript(convId);
+  assert.equal(confirmed.stats.contextEstimated, false);
+  assert.equal(confirmed.stats.latestInputTokens, 23500);
+  const confirmedCp = confirmed.turns[1].steps[0];
+  assert.equal(confirmedCp.afterTokens, 23500);
+  assert.equal(confirmedCp.isEstimatedAfter, false);
+  assert.equal(confirmedCp.savedTokens, 176500);
+});
+
 test.after(() => {
   fs.rmSync(tmpRoot, { recursive: true, force: true });
 });

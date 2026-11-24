@@ -17,10 +17,11 @@ A zero-dependency native Sidecar plugin for **Google Antigravity** that renders 
 
 ## Features / 核心特性
 
-- **Per-Step Real-Time Thinking Feed (步级实时思考流)**: Watches local `transcript_full.jsonl` via 0.8s ETag-cached polling; newly arrived thinking blocks automatically expand and scroll into view.
+- **Per-Step Real-Time Thinking Feed (步级实时思考流)**: Watches local `transcript_full.jsonl` via 300ms ETag-cached polling; newly arrived thinking blocks and tool summaries stream in strict chronological order at **150 TPS** with organic blur-to-sharp reveal, natural punctuation cadence, a glowing Google 4-color orb cursor, click-to-skip, and a `打字机` toggle.
+- **Google 4-Color Live Activity Card (谷歌四色彩虹实时状态卡)**: Displays a flowing Google 4-color breathing status card with live elapsed timing while the agent is thinking (`THINKING`), running tools (`RUNNING`), or compacting context (`COMPACTING`).
+- **First-Class `/compact` Support & Live Context Meter (`/compact` 卡片与实时上下文占用条)**: Displays overall context usage (`%`, `used / limit`) aligned with Antigravity's per-conversation `executor_metadata` limit, drops the meter immediately upon `CHECKPOINT` compaction, and keeps `/compact` milestones visible with before/after token savings.
 - **Sticky Turn Headers (吸顶提问锚点)**: Keeps the current Turn prompt pinned at the top of the feed with clear visual contrast while scrolling through long reasoning chains, so you always know which question is being solved.
-- **Compact Context Window Meter (精简上下文占用条)**: Displays overall context usage (`%`, `used / limit`) and a color-coded progress bar aligned with Antigravity's per-conversation `executor_metadata` limit.
-- **Refined Dark UI (深色语义高亮界面)**: Neutral dark-charcoal cards, luminous hover border glow, pure white body prose, semantic color badges (`THINK` / `RESULT` / `TOOL` / `ERROR`), and syntax highlights for inline code, bold terms, and tool names.
+- **Refined Dark UI (深色语义高亮界面)**: Neutral dark-charcoal cards, luminous hover border glow, pure white body prose, semantic color badges (`THINK` / `COMPACT` / `RESULT` / `TOOL` / `ERROR`), and syntax highlights for inline code, bold terms, and tool names.
 - **Zero Extra Tokens & Zero Dependencies (零额外 Token / 零外部依赖)**: Runs 100% locally on Node.js >= 22 (`node:sqlite` + Antigravity's built-in `sidecar_sdk`).
 - **Search, Filter & Conversation Switcher**: Filter by **Thinking Only / Thinking + Tools / Errors**, search with live highlights, expand/collapse all, copy any thinking block in one click, or switch across the 25 most recent conversations.
 

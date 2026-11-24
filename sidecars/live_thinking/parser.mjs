@@ -259,8 +259,13 @@ export function parseConversationTranscript(conversationId) {
   let latestOutputTokens = 0;
   let trailingChars = 0;
   let totalOutputTokens = 0;
+  let firstPlannerBaseline = 0;
+  let preFirstPlannerChars = 0;
+  let pendingCheckpointStep = null;
+  let contextEstimated = false;
   let parsedSteps = 0;
   let prevTsMs = null;
+  let lastRawStep = null;
 
   const ensureTurn = (step) => {
     if (!currentTurn) {
@@ -286,6 +291,7 @@ export function parseConversationTranscript(conversationId) {
     }
 
     parsedSteps += 1;
+    lastRawStep = obj;
     const tsMs = obj.created_at ? Date.parse(obj.created_at) : NaN;
     const deltaMs = !Number.isNaN(tsMs) && prevTsMs !== null && tsMs >= prevTsMs ? tsMs - prevTsMs : null;
     if (!Number.isNaN(tsMs)) prevTsMs = tsMs;
@@ -293,6 +299,7 @@ export function parseConversationTranscript(conversationId) {
     if (obj.type === 'USER_INPUT' || obj.source === 'USER_EXPLICIT') {
       const cleanedPrompt = cleanUserText(obj.content);
       trailingChars += cleanedPrompt.length;
+      if (firstPlannerBaseline === 0) preFirstPlannerChars += cleanedPrompt.length;
       currentTurn = {
         turnIndex: turns.length + 1,
         userPrompt: cleanedPrompt,
@@ -308,17 +315,60 @@ export function parseConversationTranscript(conversationId) {
     const isError = obj.status === 'ERROR' || Boolean(obj.error);
     if (isError) totalErrors += 1;
 
-    if (obj.type === 'PLANNER_RESPONSE') {
+    if (obj.type === 'CHECKPOINT') {
+      const text = typeof obj.content === 'string' ? obj.content.trim() : '';
+      const cpPrompt = (Number(obj.input_tokens) || 0) + (Number(obj.cache_read_tokens) || 0);
+      const beforeTokens =
+        cpPrompt > 0 ? cpPrompt : latestInputTokens + latestOutputTokens + Math.ceil(trailingChars / 4);
+      const summaryTokens =
+        (Number(obj.output_tokens) || 0) > 0 ? Number(obj.output_tokens) : Math.ceil(text.length / 4);
+      const baseline = firstPlannerBaseline > 0 ? firstPlannerBaseline : 15000;
+      const estAfter = baseline + summaryTokens;
+
+      latestInputTokens = estAfter;
+      latestCacheReadTokens = 0;
+      latestOutputTokens = 0;
+      trailingChars = 0;
+      contextEstimated = true;
+
+      const cpStep = {
+        kind: 'checkpoint',
+        stepIndex: obj.step_index ?? parsedSteps,
+        type: 'CHECKPOINT',
+        createdAt: obj.created_at || null,
+        deltaMs,
+        status: obj.status || 'DONE',
+        isError,
+        beforeTokens,
+        afterTokens: estAfter,
+        isEstimatedAfter: true,
+        summaryTokens,
+        savedTokens: Math.max(0, beforeTokens - estAfter),
+        content: text.length > 3000 ? `${text.slice(0, 3000)}\n... [truncated ${text.length - 3000} chars]` : text,
+      };
+      turn.steps.push(cpStep);
+      pendingCheckpointStep = cpStep;
+    } else if (obj.type === 'PLANNER_RESPONSE') {
       if (obj.model) latestModel = obj.model;
       const uncachedTok = Number(obj.input_tokens) || 0;
       const cacheTok = Number(obj.cache_read_tokens) || 0;
       const promptTok = uncachedTok + cacheTok;
       const outputTok = Number(obj.output_tokens) || 0;
       if (promptTok > 0) {
+        if (firstPlannerBaseline === 0) {
+          firstPlannerBaseline = Math.max(0, promptTok - Math.ceil(preFirstPlannerChars / 4));
+        }
+        if (pendingCheckpointStep) {
+          pendingCheckpointStep.afterTokens = promptTok;
+          pendingCheckpointStep.isEstimatedAfter = false;
+          pendingCheckpointStep.savedTokens = Math.max(0, pendingCheckpointStep.beforeTokens - promptTok);
+          pendingCheckpointStep = null;
+        }
         latestInputTokens = promptTok;
         latestCacheReadTokens = cacheTok;
         latestOutputTokens = outputTok;
         trailingChars = 0;
+        contextEstimated = false;
       }
       totalOutputTokens += outputTok;
 
@@ -395,12 +445,75 @@ export function parseConversationTranscript(conversationId) {
   const contextUsedPercent =
     contextLimit > 0 ? Math.min(100, Math.round((contextUsedTokens / contextLimit) * 1000) / 10) : 0;
 
+  // Detect live in-flight state from the latest raw step
+  let activity = { isWorking: false, phase: 'idle', label: '', sinceIso: null };
+  if (lastRawStep) {
+    const lastTs = lastRawStep.created_at ? Date.parse(lastRawStep.created_at) : NaN;
+    const ageMs = Number.isNaN(lastTs) ? 0 : Math.max(0, Date.now() - lastTs);
+    const isFresh = ageMs < 10 * 60 * 1000; // ignore stale interrupted sessions > 10m old
+    if (isFresh) {
+      if (lastRawStep.type === 'USER_INPUT' || lastRawStep.source === 'USER_EXPLICIT') {
+        const cleanedLast = cleanUserText(lastRawStep.content);
+        if (/^\/compact(?:\s|$)/i.test(cleanedLast)) {
+          activity = {
+            isWorking: true,
+            phase: 'compacting',
+            label: '正在压缩上下文中...',
+            sinceIso: lastRawStep.created_at || meta.mtime,
+          };
+        } else {
+          activity = {
+            isWorking: true,
+            phase: 'thinking',
+            label: '正在思考中...',
+            sinceIso: lastRawStep.created_at || meta.mtime,
+          };
+        }
+      } else if (lastRawStep.type === 'CHECKPOINT') {
+        if (lastRawStep.status && lastRawStep.status !== 'DONE' && lastRawStep.status !== 'ERROR') {
+          activity = {
+            isWorking: true,
+            phase: 'compacting',
+            label: '正在压缩上下文中...',
+            sinceIso: lastRawStep.created_at || meta.mtime,
+          };
+        }
+      } else if (lastRawStep.type === 'PLANNER_RESPONSE') {
+        const calls = Array.isArray(lastRawStep.tool_calls) ? lastRawStep.tool_calls : [];
+        if (calls.length > 0) {
+          const names = calls.map((c) => c?.name || c?.function?.name || 'tool').slice(0, 3).join(', ');
+          activity = {
+            isWorking: true,
+            phase: 'tooling',
+            label: `正在执行工具: ${names}`,
+            sinceIso: lastRawStep.created_at || meta.mtime,
+          };
+        } else if (lastRawStep.status && lastRawStep.status !== 'DONE' && lastRawStep.status !== 'ERROR') {
+          activity = {
+            isWorking: true,
+            phase: 'thinking',
+            label: '正在生成思考与回复...',
+            sinceIso: lastRawStep.created_at || meta.mtime,
+          };
+        }
+      } else if (lastRawStep.type === 'GENERIC' || lastRawStep.type === 'SYSTEM_MESSAGE') {
+        activity = {
+          isWorking: true,
+          phase: 'thinking',
+          label: '正在分析结果并思考下一步...',
+          sinceIso: lastRawStep.created_at || meta.mtime,
+        };
+      }
+    }
+  }
+
   return {
     found: true,
     conversationId,
     isFullTranscript: meta.isFull,
     etag: meta.etag,
     updatedAt: meta.mtime,
+    activity,
     stats: {
       turns: turns.length,
       totalSteps: parsedSteps,
@@ -416,6 +529,7 @@ export function parseConversationTranscript(conversationId) {
       contextUsedTokens,
       contextLimit,
       contextUsedPercent,
+      contextEstimated,
     },
     turns,
   };
