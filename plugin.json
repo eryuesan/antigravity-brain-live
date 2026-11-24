@@ -1,0 +1,14 @@
+{
+  "name": "thinking-visualizer",
+  "displayName": "Brain Live (Thinking Visualizer)",
+  "version": "1.6.0",
+  "description": "Real-time sidecar panel for Google Antigravity that live-renders full model thinking blocks, sticky turn headers, tool call timelines, and compact context window usage from local transcripts.",
+  "author": "eryuesan",
+  "repository": "https://github.com/eryuesan/antigravity-brain-live",
+  "homepage": "https://github.com/eryuesan/antigravity-brain-live",
+  "logo": "assets/logo.svg",
+  "suggestedPrompts": [
+    "Open the Brain Live thinking panel for this conversation",
+    "Show my latest reasoning steps and tool calls"
+  ]
+}

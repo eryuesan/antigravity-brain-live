@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Brain Live</title>
+  <script src="/preload.js"></script>
+  <link rel="stylesheet" href="/styles.css?v=1.6.0">
+</head>
+<body>
+  <div class="shell">
+    <header class="topbar">
+      <div class="topbar-row">
+        <div class="brand">
+          <span class="pulse-dot" id="live-dot" title="步级实时监听中"></span>
+          <span class="brand-title">Brain Live</span>
+          <span class="badge-live" id="live-status">LIVE</span>
+        </div>
+        <div class="topbar-actions">
+          <button type="button" class="icon-btn" id="btn-pause" title="暂停 / 恢复实时刷新">暂停</button>
+          <button type="button" class="icon-btn active" id="btn-autoscroll" title="有新思考时自动滚到底部">自动滚动</button>
+        </div>
+      </div>
+
+      <div class="conv-row">
+        <select id="conv-select" class="conv-select" aria-label="选择会话">
+          <option value="">自动跟随当前活跃会话</option>
+        </select>
+        <button type="button" class="icon-btn" id="btn-refresh" title="立即刷新">刷新</button>
+      </div>
+
+      <div class="ctx-box" id="ctx-box" title="当前会话上下文总占用">
+        <div class="ctx-top">
+          <span class="ctx-label">上下文 <strong id="ctx-pct">0%</strong></span>
+          <span class="ctx-ratio" id="ctx-ratio">0 / 256k</span>
+        </div>
+        <div class="ctx-track">
+          <div class="ctx-fill" id="ctx-fill" style="width: 0%"></div>
+        </div>
+      </div>
+
+      <div class="stats-strip" id="stats-strip">
+        <div class="stat-pill"><span class="stat-k">思考</span><span class="stat-v" id="st-thinking">0</span></div>
+        <div class="stat-pill"><span class="stat-k">工具</span><span class="stat-v" id="st-tools">0</span></div>
+        <div class="stat-pill"><span class="stat-k">缓存</span><span class="stat-v" id="st-cache">0%</span></div>
+        <div class="stat-pill"><span class="stat-k">输出</span><span class="stat-v" id="st-out">0</span></div>
+      </div>
+
+      <div class="controls-row">
+        <div class="filter-tabs" role="tablist">
+          <button type="button" class="tab-btn active" data-filter="thinking">仅思考</button>
+          <button type="button" class="tab-btn" data-filter="all">思考+工具</button>
+          <button type="button" class="tab-btn" data-filter="errors">报错</button>
+        </div>
+        <div class="expand-actions">
+          <button type="button" class="mini-btn" id="btn-expand-all">全展</button>
+          <button type="button" class="mini-btn" id="btn-collapse-all">全收</button>
+        </div>
+      </div>
+
+      <div class="search-row">
+        <input type="search" id="search-input" class="search-input" placeholder="搜索思考内容、工具名或命令..." autocomplete="off">
+      </div>
+    </header>
+
+    <main class="feed" id="feed">
+      <div class="empty-state" id="empty-state">
+        <p>正在连接本地会话思考流...</p>
+      </div>
+    </main>
+
+    <footer class="statusbar">
+      <span id="status-model" class="status-model">-</span>
+      <span id="status-updated" class="status-updated">等待数据</span>
+    </footer>
+  </div>
+
+  <script src="/app.js?v=1.5.0"></script>
+</body>
+</html>

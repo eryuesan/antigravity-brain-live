@@ -1,0 +1,26 @@
+{
+  "command": "node",
+  "args": ["main.mjs"],
+  "restart_policy": "always",
+  "display_name": "Brain Live",
+  "description": "Real-time viewer for model thinking blocks, tool call timelines, and token telemetry in the current Antigravity conversation.",
+  "has_web_ui": true,
+  "agent_permissions": {
+    "allows_user_interactions": false
+  },
+  "ui_config": {
+    "display_name": "Brain Live",
+    "views": [
+      {
+        "path": "/",
+        "entrypoint": "SIDECAR_UI_ENTRYPOINT_AUX_PANE",
+        "title": "Brain Live"
+      },
+      {
+        "path": "/",
+        "entrypoint": "SIDECAR_UI_ENTRYPOINT_SIDEBAR",
+        "title": "Brain Live"
+      }
+    ]
+  }
+}

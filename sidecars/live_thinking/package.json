@@ -1,0 +1,6 @@
+{
+  "name": "live_thinking",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Real-time thinking and execution timeline sidecar for Antigravity"
+}
